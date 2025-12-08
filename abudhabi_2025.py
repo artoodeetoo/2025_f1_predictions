@@ -7,7 +7,10 @@ from sklearn.metrics import mean_absolute_error
 import matplotlib.pyplot as plt
 from sklearn.impute import SimpleImputer
 from xgboost import XGBRegressor
+from dotenv import load_dotenv
+import os
 
+load_dotenv()
 fastf1.Cache.enable_cache("f1_cache")
 
 # load the 2024 Qatar session data
@@ -62,18 +65,26 @@ qualifying_2025 = pd.DataFrame({
 
 
 qualifying_2025["CleanAirRacePace (s)"] = qualifying_2025["Driver"].map(clean_air_race_pace)
-API_KEY = ""
-lat, lon = 24.4672, 54.6031  
+
+# Weather fetch (robust to missing/invalid API responses)
+API_KEY = os.getenv('API_KEY')
+lat, lon = 24.4672, 54.6031
 weather_url = f"http://api.openweathermap.org/data/2.5/forecast?lat={lat}&lon={lon}&appid={API_KEY}&units=metric"
 response = requests.get(weather_url)
-weather_data = response.json()
+try:
+    weather_data = response.json()
+except ValueError:
+    weather_data = {}
 
-forecast_time = "2025-12-07 13:00:00"
-forecast_data = next((f for f in weather_data["list"] if f["dt_txt"] == forecast_time), None)
+forecast_data = None
+if isinstance(weather_data, dict) and "list" in weather_data:
+    forecast_time = "2025-12-07 13:00:00"
+    forecast_data = next((f for f in weather_data.get("list", []) if f.get("dt_txt") == forecast_time), None)
+else:
+    print("Warning: weather API response missing 'list'. Check API key or response. Response:", weather_data)
 
-
-rain_probability = forecast_data["pop"] if forecast_data else 0
-temperature = forecast_data["main"]["temp"] if forecast_data else 20
+rain_probability = forecast_data.get("pop", 0) if forecast_data else 0
+temperature = forecast_data.get("main", {}).get("temp", 20) if forecast_data else 20
 
 # adjust qualifying time based on weather conditions
 if rain_probability >= 0.75:
